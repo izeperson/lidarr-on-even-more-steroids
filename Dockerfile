@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/library/node:21-alpine as deemix
+FROM --platform=$TARGETPLATFORM docker.io/library/node:24-alpine as deemix
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -10,13 +10,17 @@ RUN git clone --recurse-submodules https://gitlab.com/RemixDev/deemix-gui.git
 WORKDIR deemix-gui
 RUN case "$TARGETPLATFORM" in \
         "linux/amd64") \
-            jq '.pkg.targets = ["node16-alpine-x64"]' ./server/package.json > tmp-json ;; \
+            jq '.pkg.targets = ["node24-alpine-x64"]' ./server/package.json > tmp-json ;; \
         "linux/arm64") \
-            jq '.pkg.targets = ["node16-alpine-arm64"]' ./server/package.json > tmp-json ;; \
+            jq '.pkg.targets = ["node24-alpine-arm64"]' ./server/package.json > tmp-json ;; \
         *) \
             echo "Platform $TARGETPLATFORM not supported" && exit 1 ;; \
     esac && \
     mv tmp-json /deemix-gui/server/package.json
+# vercel/pkg is archived and only supports Node.js through 18. Use its maintained
+# fork so the packaged server embeds the current Node 24 runtime.
+RUN jq 'del(.devDependencies.pkg) | .devDependencies["@yao-pkg/pkg"] = "6.25.0"' package.json > tmp-json && \
+    mv tmp-json package.json
 RUN yarn install-all
 # Deezer can omit MEDIA or EXPLICIT_TRACK_CONTENT for unavailable tracks. Guard
 # those fields so one incomplete track does not abort the whole download.
@@ -27,11 +31,12 @@ RUN find . -type f \( -name '*.js' -o -name '*.ts' \) -not -path '*/.git/*' -exe
         -e 's/track\.MEDIA\[0\]?\.HREF/track.MEDIA?.[0]?.HREF/g' {} +
 # Patching deemix: see issue https://github.com/youegraillot/lidarr-on-steroids/issues/63
 RUN sed -i 's/const channelData = await dz.gw.get_page(channelName)/let channelData; try { channelData = await dz.gw.get_page(channelName); } catch (error) { console.error(`Caught error ${error}`); return [];}/' ./server/src/routes/api/get/newReleases.ts
+RUN sed -i '/output.DURATION = duration/i\	if (duration === 0) duration = Number(result.SONGS.total) * 180' ./server/src/routes/api/get/albumSearch.ts
 RUN yarn dist-server
 RUN mv /deemix-gui/dist/deemix-server /deemix-server
 
 
-FROM ghcr.io/hotio/lidarr:pr-plugins-2.5.2.4317
+FROM ghcr.io/hotio/lidarr:pr-plugins-3.1.2.4913
 
 LABEL maintainer="youegraillot"
 
