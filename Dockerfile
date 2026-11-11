@@ -18,6 +18,13 @@ RUN case "$TARGETPLATFORM" in \
     esac && \
     mv tmp-json /deemix-gui/server/package.json
 RUN yarn install-all
+# Deezer can omit MEDIA or EXPLICIT_TRACK_CONTENT for unavailable tracks. Guard
+# those fields so one incomplete track does not abort the whole download.
+RUN find . -type f \( -name '*.js' -o -name '*.ts' \) -not -path '*/.git/*' -exec sed -i \
+        -e 's/track\.EXPLICIT_TRACK_CONTENT\.EXPLICIT_LYRICS_STATUS/track.EXPLICIT_TRACK_CONTENT?.EXPLICIT_LYRICS_STATUS/g' \
+        -e 's/track\.EXPLICIT_TRACK_CONTENT\.EXPLICIT_COVER_STATUS/track.EXPLICIT_TRACK_CONTENT?.EXPLICIT_COVER_STATUS/g' \
+        -e 's/track\.MEDIA\[0\]\.HREF/track.MEDIA?.[0]?.HREF/g' \
+        -e 's/track\.MEDIA\[0\]?\.HREF/track.MEDIA?.[0]?.HREF/g' {} +
 # Patching deemix: see issue https://github.com/youegraillot/lidarr-on-steroids/issues/63
 RUN sed -i 's/const channelData = await dz.gw.get_page(channelName)/let channelData; try { channelData = await dz.gw.get_page(channelName); } catch (error) { console.error(`Caught error ${error}`); return [];}/' ./server/src/routes/api/get/newReleases.ts
 RUN yarn dist-server
