@@ -107,12 +107,11 @@ while ! nc -z localhost 8686; do
     sleep 1
 done
 
-apiKey="$(curl \
-    -sS \
-    --retry-all-errors \
-    --retry 10 \
-    $url/initialize.json |
-    jq -r '.apiKey')"
+apiKey="$(sed -n 's/.*<ApiKey>\([^<]*\)<\/ApiKey>.*/\1/p' /config/config.xml | head -n 1)"
+if [ -z "$apiKey" ]; then
+    echo "[autoconfig] ERROR: Could not read the Lidarr API key from /config/config.xml"
+    exit 1
+fi
 
 plugin=$(apiCall "GET" "system/plugins" | jq '.[]|select(.name=="Deemix")')
 
