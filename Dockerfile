@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/library/node:24-alpine as deemix
+FROM --platform=$BUILDPLATFORM docker.io/library/node:24-alpine AS deemix
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -7,7 +7,7 @@ RUN echo "Building for TARGETPLATFORM=$TARGETPLATFORM | BUILDPLATFORM=$BUILDPLAT
 RUN apk add --no-cache git jq python3 make gcc musl-dev g++ && \
     rm -rf /var/lib/apt/lists/*
 RUN git clone --recurse-submodules https://gitlab.com/RemixDev/deemix-gui.git
-WORKDIR deemix-gui
+WORKDIR /deemix-gui
 RUN case "$TARGETPLATFORM" in \
         "linux/amd64") \
             jq '.pkg.targets = ["node24-alpine-x64"]' ./server/package.json > tmp-json ;; \
@@ -29,6 +29,9 @@ RUN find . -type f \( -name '*.js' -o -name '*.ts' \) -not -path '*/.git/*' -exe
         -e 's/track\.EXPLICIT_TRACK_CONTENT\.EXPLICIT_COVER_STATUS/track.EXPLICIT_TRACK_CONTENT?.EXPLICIT_COVER_STATUS/g' \
         -e 's/track\.MEDIA\[0\]\.HREF/track.MEDIA?.[0]?.HREF/g' \
         -e 's/track\.MEDIA\[0\]?\.HREF/track.MEDIA?.[0]?.HREF/g' {} +
+# Cross-architecture pkg builds otherwise execute the target Node binary under QEMU.
+RUN jq '.scripts["dist-server"] |= sub("--out-dir dist"; "--no-bytecode --public-packages \"*\" --public --out-dir dist")' package.json > tmp-json && \
+    mv tmp-json package.json
 # Patching deemix: see issue https://github.com/youegraillot/lidarr-on-steroids/issues/63
 RUN sed -i 's/const channelData = await dz.gw.get_page(channelName)/let channelData; try { channelData = await dz.gw.get_page(channelName); } catch (error) { console.error(`Caught error ${error}`); return [];}/' ./server/src/routes/api/get/newReleases.ts
 RUN sed -i '/output.DURATION = duration/i\	if (duration === 0) duration = Number(result.SONGS.total) * 180' ./server/src/routes/api/get/albumSearch.ts
